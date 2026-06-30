@@ -5,42 +5,31 @@ using UnityEngine.InputSystem;
 public class PlayerController : MonoBehaviour
 {
     [Header("Movement")]
-    [Tooltip("Force multiplier applied every FixedUpdate based on input.")]
     [SerializeField] private float moveSpeed = 10f;
-    [Tooltip("Maximum horizontal speed. Set to 0 or negative to disable clamping.")]
     [SerializeField] private float maxSpeed = 8f;
-    [Tooltip("When enabled, movement is relative to the assigned camera's forward/right.")]
     [SerializeField] private bool cameraRelativeMovement = true;
-    [Tooltip("Optional camera transform. If null the script will try Camera.main at Awake().")]
     [SerializeField] private Transform cameraTransform = null;
 
-    // internal storage for input
     private Vector2 moveInput = Vector2.zero;
     private Rigidbody rb;
 
-    void Awake()
+    private void Awake()
     {
         rb = GetComponent<Rigidbody>();
+
         if (cameraTransform == null && Camera.main != null)
             cameraTransform = Camera.main.transform;
 
-        // Good defaults for a rolling ball
         rb.interpolation = RigidbodyInterpolation.Interpolate;
     }
 
-    /// <summary>
-    /// Callback expected to be wired from a PlayerInput (Behavior = Invoke Unity Events)
-    /// or by using the old SendMessage style with the Input System. The action should
-    /// be a Value type with Vector2 binding (e.g. WASD/left stick).
-    /// </summary>
-    /// <param name="value">InputValue provided by the Input System</param>
+    // Chamado automaticamente pelo Player Input (Behavior = Send Messages)
     public void OnMove(InputValue value)
     {
-        if (value == null) return;
         moveInput = value.Get<Vector2>();
     }
 
-    void FixedUpdate()
+    private void FixedUpdate()
     {
         ApplyMovement();
     }
@@ -49,47 +38,48 @@ public class PlayerController : MonoBehaviour
     {
         if (rb == null) return;
 
-        // Convert 2D input to world-space direction
-        Vector3 desired = new Vector3(moveInput.x, 0f, moveInput.y);
+        Vector3 direction = new Vector3(moveInput.x, 0f, moveInput.y);
 
         if (cameraRelativeMovement && cameraTransform != null)
         {
-            // Project camera forward on the XZ plane and build a right vector
-            Vector3 camForward = cameraTransform.forward;
-            camForward.y = 0f;
-            camForward.Normalize();
-            Vector3 camRight = cameraTransform.right;
-            camRight.y = 0f;
-            camRight.Normalize();
+            Vector3 forward = cameraTransform.forward;
+            forward.y = 0f;
+            forward.Normalize();
 
-            desired = camRight * moveInput.x + camForward * moveInput.y;
+            Vector3 right = cameraTransform.right;
+            right.y = 0f;
+            right.Normalize();
+
+            direction = right * moveInput.x + forward * moveInput.y;
         }
 
-        if (desired.sqrMagnitude > 1f)
-            desired.Normalize();
+        if (direction.sqrMagnitude > 1f)
+            direction.Normalize();
 
-        // Apply force. ForceMode.Force makes it frame-rate independent when used in FixedUpdate.
-        Vector3 force = desired * moveSpeed;
-        rb.AddForce(force, ForceMode.Force);
+        // Aplica aceleração na direção desejada
+        rb.AddForce(direction * moveSpeed, ForceMode.Acceleration);
 
-        // Optionally clamp horizontal speed while preserving vertical velocity (gravity/jumps)
-        if (maxSpeed > 0f)
+        // Limita a velocidade máxima
+        if (maxSpeed > 0)
         {
-            Vector3 horizontalVel = rb.linearVelocity;
-            horizontalVel.y = 0f;
-            float speed = horizontalVel.magnitude;
-            if (speed > maxSpeed)
+            Vector3 horizontalVelocity = rb.linearVelocity;
+            horizontalVelocity.y = 0f;
+
+            if (horizontalVelocity.magnitude > maxSpeed)
             {
-                Vector3 limited = horizontalVel.normalized * maxSpeed;
-                rb.linearVelocity = new Vector3(limited.x, rb.linearVelocity.y, limited.z);
+                horizontalVelocity = horizontalVelocity.normalized * maxSpeed;
+
+                rb.linearVelocity = new Vector3(
+                    horizontalVelocity.x,
+                    rb.linearVelocity.y,
+                    horizontalVelocity.z
+                );
             }
         }
     }
 
-    // Public setters/getters for runtime tweaking
     public void SetMoveSpeed(float speed) => moveSpeed = speed;
     public void SetMaxSpeed(float max) => maxSpeed = max;
     public void SetCameraRelative(bool enabled) => cameraRelativeMovement = enabled;
     public void SetCameraTransform(Transform t) => cameraTransform = t;
 }
-
